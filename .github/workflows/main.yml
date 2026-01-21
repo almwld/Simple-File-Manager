@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Yemen Market APK
 
 on: [push, workflow_dispatch]
 
@@ -9,22 +9,47 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '17'
+    - name: Fix styles.xml error
+      run: |
+        # تأكد من وجود مجلد res/values
+        mkdir -p app/src/main/res/values 2>/dev/null || true
         
-    - name: Setup Android SDK
+        # إنشاء أو استبدال styles.xml بصيغة صحيحة
+        cat > app/src/main/res/values/styles.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <!-- Theme تطبيق Yemen Market -->
+            <style name="AppTheme" parent="Theme.AppCompat.Light">
+                <item name="colorPrimary">#4CAF50</item>
+                <item name="colorPrimaryDark">#388E3C</item>
+                <item name="colorAccent">#FFC107</item>
+            </style>
+        </resources>
+        EOF
+        
+        # إذا كان هناك ملف styles.xml آخر، احذفه
+        find . -name "styles.xml" -type f | while read file; do
+          if ! grep -q "AppTheme" "$file"; then
+            echo "Fixing $file..."
+            cat > "$file" << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+                <item name="android:statusBarColor">@android:color/transparent</item>
+            </style>
+        </resources>
+        EOF
+          fi
+        done
+        
+    - name: Setup Java and Android
       uses: android-actions/setup-android@v3
       
-    - name: Create Simple Android Project
+    - name: Create minimal Android project
       run: |
-        # إنشاء هيكل مشروع بسيط
+        # إنشاء AndroidManifest.xml بسيط
         mkdir -p app/src/main/java/com/yemenmarket
-        mkdir -p app/src/main/res/layout
         
-        # AndroidManifest.xml
         cat > app/src/main/AndroidManifest.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -34,7 +59,7 @@ jobs:
                 android:allowBackup="true"
                 android:icon="@mipmap/ic_launcher"
                 android:label="Yemen Market"
-                android:theme="@style/Theme.AppCompat.Light">
+                android:theme="@style/AppTheme">
                 
                 <activity android:name=".MainActivity"
                     android:exported="true">
@@ -47,43 +72,93 @@ jobs:
         </manifest>
         EOF
         
-        # MainActivity.java
+        # إنشاء MainActivity بسيط
         cat > app/src/main/java/com/yemenmarket/MainActivity.java << 'EOF'
         package com.yemenmarket;
         
         import android.app.Activity;
         import android.os.Bundle;
-        import android.widget.TextView;
         
         public class MainActivity extends Activity {
             @Override
             protected void onCreate(Bundle savedInstanceState) {
                 super.onCreate(savedInstanceState);
-                TextView textView = new TextView(this);
-                textView.setText("مرحباً في Yemen Market!");
-                textView.setTextSize(24);
-                setContentView(textView);
+                setContentView(R.layout.activity_main);
             }
         }
         EOF
         
-        # layout بسيط
+        # إنشاء layout بسيط
+        mkdir -p app/src/main/res/layout
         cat > app/src/main/res/layout/activity_main.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:gravity="center">
+            android:gravity="center"
+            android:orientation="vertical">
             
             <TextView
-                android:id="@+id/textView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="مرحباً في Yemen Market!"
-                android:textSize="24sp" />
+                android:text="Yemen Market"
+                android:textSize="30sp"
+                android:textStyle="bold" />
+                
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="تم البناء بنجاح!"
+                android:textSize="20sp"
+                android:layout_marginTop="20dp" />
                 
         </LinearLayout>
         EOF
+        
+    - name: Build APK
+      run: |
+        # إنشاء build.gradle بسيط
+        cat > app/build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application'
+        }
+        
+        android {
+            compileSdk 34
+            namespace 'com.yemenmarket'
+            
+            defaultConfig {
+                applicationId "com.yemenmarket"
+                minSdk 21
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+            
+            buildTypes {
+                release {
+                    minifyEnabled false
+                }
+            }
+        }
+        
+        dependencies {
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+        }
+        EOF
+        
+        # إنشاء settings.gradle
+        echo "include ':app'" > settings.gradle
+        
+        # بناء المشروع
+        chmod +x gradlew 2>/dev/null || true
+        ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: yemen-market-app
+        path: app/build/outputs/apk/debug/*.apk        EOF
         
     - name: Build APK with aapt
       run: |
